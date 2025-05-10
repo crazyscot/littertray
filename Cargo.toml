@@ -8,6 +8,7 @@ readme = "README.md"
 keywords = ["test"]
 license = "MIT OR Apache-2.0"
 categories = ["development-tools", "filesystem"]
+repository = "https://github.com/crazyscot/littertray/"
 
 
 [features]
