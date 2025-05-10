@@ -3,13 +3,12 @@ name = "littertray"
 version = "0.1.0"
 authors = ["Sergio Benitez <sb@sergio.bz>", "Ross Younger <crazyscot@gmail.com>"]
 edition = "2018"
-description = "A filesystem sandbox, intended for unit tests"
+description = "Lightweight sandboxing for tests that write to the filesystem"
 readme = "README.md"
-keywords = ["test"]
+keywords = ["test", "sandbox"]
 license = "MIT OR Apache-2.0"
 categories = ["development-tools", "filesystem"]
 repository = "https://github.com/crazyscot/littertray/"
-
 
 [features]
 default = []

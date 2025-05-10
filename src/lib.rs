@@ -1,5 +1,10 @@
-//! Filesystem helper for tests
 // Copyright (c) 2020 Sergio Benitez, (c) 2025 Ross Younger
+//! Lightweight sandboxing for tests that write to the filesystem
+//!
+//!
+//! This is a derivative work of
+//! [`figment::Jail`](https://docs.rs/figment/latest/figment/struct.Jail.html)
+//! but simpler (no environment variables), and it supports async closures.
 
 use std::fs::{self, File};
 use std::io::{BufWriter, Write as _};
@@ -9,26 +14,42 @@ use std::sync::Mutex;
 use tempfile::TempDir;
 use thiserror::Error;
 
-/// The result type used by this crate
+/// The result type used by [`LitterTray`]
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-/// The error type used by this crate
+/// The error type used by [`LitterTray`]
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum Error {
-    /// An I/O error occurred. Refer to the contained Error for more details.
+    /// An I/O error occurred. Refer to the contained [`io::Error`](std::io::Error) for more details.
     #[error("I/O error")]
     Io(#[from] std::io::Error),
     /// The requested path is outside the [`LitterTray`] sandbox.
+    /// (This is only returned by [`LitterTray`] methods; it makes no attempt to intercept filesystem calls.)
     #[error("requested path is outside of the sandbox")]
     Uncontained(PathBuf),
 }
 
-/// This is a sort of "lightweight jail".
-/// The process changes directory into the litter tray during execution, but is not well constrained.
-/// On drop, the litter tray is automatically cleaned up.
+/// Lightweight filesystem sandbox
 ///
-/// This is a derivative work of `figment::Jail` but simpler (no environment variables) and supports async closures.
+/// This is little more than a convenience wrapper to
+/// [`tempdir::TempDir`](https://docs.rs/tempdir/latest/tempdir/struct.TempDir.html).
+/// You provide a closure, which is executed in a fresh sandbox (temporary directory);
+/// there are convenience methods to create files, directories and so forth.
+///
+/// The process changes directory into the sandbox during execution, but is not well constrained.
+///
+/// On drop, the temporary directory is automatically cleaned up.
+///
+/// <div class="warning">
+/// While this crate contains no <i>unsafe</i> Rust, it is not without limitation.
+/// <tt>LitterTray</tt> uses a global lock to prevent tests from conflicting when run in parallel
+/// (which is cargo's default behaviour).
+/// This has the effect of serialising your tests.
+/// If you want to parallelise testing, consider
+/// <a href="https://docs.rs/rusty-fork/latest/rusty_fork/">rusty_fork</a>.
+/// </div>
+///
 #[derive(Debug)]
 pub struct LitterTray {
     canonical_dir: PathBuf,
@@ -38,12 +59,18 @@ pub struct LitterTray {
 
 /// This mutex ensures that only one test can use a litter tray at once.
 /// This is necessary because it changes the process working directory.
-/// If you want to parallelise testing, consider [`rusty_fork`].
+/// If you want to parallelise testing, consider [`rusty_fork`](https://docs.rs/rusty-fork/latest/rusty_fork/).
 static G_LOCK: Mutex<()> = Mutex::new(());
 
 impl LitterTray {
-    /// Runs a closure in a new litter tray, passing the tray to the closure.
-    /// The closure must return a Result<()>.
+    /// Runs a closure in a new sandbox, passing the sandbox to the closure.
+    /// The closure must return a [`Result<()>`](std::result::Result).
+    ///
+    /// # Panics
+    ///
+    /// If the global lock was poisoned by a panic in a previous closure (see [Mutex#poisoning](Mutex#poisoning))
+    ///
+    /// # Example
     ///
     /// ```
     /// use littertray::LitterTray;
@@ -68,9 +95,16 @@ impl LitterTray {
         outcome
     }
 
-    /// Runs a closure in a new litter tray, passing the tray to the closure.
+    /// Runs a closure in a sandbox, passing the sandbox to the closure.
     ///
-    /// This is a convenience function that does not return a Result.
+    /// This is a convenience wrapper for [`LitterTray::try_with`] which does not return a `Result`,
+    /// and its closure is expected to return nothing.
+    ///
+    /// # Panics
+    ///
+    /// If the global lock was poisoned by a panic in a previous closure (see [Mutex#poisoning](Mutex#poisoning))
+    ///
+    /// # Example
     ///
     /// ```
     /// use littertray::LitterTray;
@@ -87,8 +121,12 @@ impl LitterTray {
         });
     }
 
-    /// Runs an async closure in a new litter tray, passing the tray to the closure.
-    /// The closure must return a Result<()>.
+    /// Runs an async closure in a new sandbox, passing the sandbox to the closure.
+    /// The closure must return a [`Result<()>`](std::result::Result).
+    ///
+    /// # Panics
+    ///
+    /// If the global lock was poisoned by a panic in a previous closure (see [Mutex#poisoning](Mutex#poisoning))
     #[cfg(feature = "async")]
     pub async fn try_with_async<F: AsyncFnOnce(&mut LitterTray) -> Result<()>>(f: F) -> Result<()> {
         let _guard = G_LOCK.lock().unwrap();
@@ -104,7 +142,7 @@ impl LitterTray {
         outcome
     }
 
-    /// Returns the temporary directory that is this litter tray.
+    /// Returns the absolute path to the temporary directory that is this sandbox.
     /// This directory will be removed on drop.
     #[must_use]
     pub fn directory(&self) -> &Path {
@@ -122,10 +160,10 @@ impl LitterTray {
         Ok(path)
     }
 
-    /// Creates a binary file within the tray from the provided contents.
+    /// Creates a binary file within the sandbox from the provided contents.
     ///
     /// The given path must either be a relative filename,
-    /// or an absolute path within the tray (see [`LitterTray::directory()`]).
+    /// or an absolute path within the sandbox (see [`LitterTray::directory()`]).
     pub fn create_binary<P: AsRef<Path>>(&self, path: P, bytes: &[u8]) -> Result<File> {
         let path = self.safe_path_within_tray(path)?;
         let file = File::create(path)?;
@@ -136,16 +174,18 @@ impl LitterTray {
             .map_err(std::io::IntoInnerError::into_error)?)
     }
 
-    /// Creates a text file within the tray from the provided contents
+    /// Creates a text file within the sandbox from the provided contents.
     ///
     /// The given path must either be a relative filename,
-    /// or an absolute path within the tray (see [`LitterTray::directory()`]).
+    /// or an absolute path within the sandbox (see [`LitterTray::directory()`]).
     pub fn create_text<P: AsRef<Path>>(&self, path: P, contents: &str) -> Result<File> {
         self.create_binary(path, contents.as_bytes())
     }
 
-    /// Creates a directory within the tray
+    /// Creates a directory within the sandbox.
     ///
+    /// The given path must either be a relative filename,
+    /// or an absolute path within the sandbox (see [`LitterTray::directory()`]).
     ///
     /// ```
     /// use littertray::LitterTray;
@@ -162,8 +202,10 @@ impl LitterTray {
     }
 
     #[cfg(unix)]
-    /// Creates a symbolic link within the tray.
+    /// Creates a symbolic link within the sandbox.
     /// Returns the path to the new symlink.
+    ///
+    /// *This method is only available on Unix platforms.*
     pub fn make_symlink<P: AsRef<Path>, Q: AsRef<Path>>(
         &self,
         original: P,
@@ -177,7 +219,7 @@ impl LitterTray {
 }
 
 impl Drop for LitterTray {
-    /// On drop this object:
+    /// On drop, `LitterTray`:
     /// - Changes the process's working directory to whatever it was on entry
     /// - Cleans up the sandbox directory
     fn drop(&mut self) {
@@ -218,8 +260,10 @@ mod test {
         std::env::current_dir().unwrap()
     }
 
-    // These tests need to run in forks, because they change the working directory
-    // and would trample each other.
+    // These tests run in forks to enable parallelisation.
+    // They change the working directory and would trample each other;
+    // while the global lock prevents trouble, running them this way
+    // allows for parallelisation.
 
     rusty_fork_test! {
         #[test]
@@ -249,7 +293,7 @@ mod test {
         #[test]
         fn absolute_path() {
             LitterTray::try_with(|tray| {
-                // Creating a file by absolute path within the tray works
+                // Creating a file by absolute path within the sandbox works
                 let mut path = PathBuf::from(tray.directory());
                 path.push("file.txt");
                 let _ = tray.create_text(path, "hi").unwrap();
@@ -261,7 +305,7 @@ mod test {
         #[test]
         fn absolute_path_outside_fails() {
             LitterTray::try_with(|tray| {
-                // Creating a file by absolute path outside the tray is blocked
+                // Creating a file by absolute path outside the sandbox is blocked
                 let mut path = PathBuf::new();
                 path.push("/not-a-litter-tray");
                 let _ = tray.create_text(path, "hi").unwrap_err();
