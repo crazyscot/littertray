@@ -339,8 +339,11 @@ mod test {
             })
             .unwrap();
         }
+    }
 
-        #[cfg(feature = "async")]
+    #[cfg(feature = "async")]
+    rusty_fork_test! {
+        // trap: cfg macros don't work within rusty_fork_test, you have to put them outside the macro.
         #[test]
         fn async_closure() {
             let rt = tokio::runtime::Runtime::new().unwrap();

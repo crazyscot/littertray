@@ -2,13 +2,15 @@
 name = "littertray"
 version = "0.1.0"
 authors = ["Ross Younger <crazyscot@gmail.com>"]
-edition = "2018"
 description = "Lightweight sandboxing for tests that write to the filesystem"
 readme = "README.md"
 keywords = ["test", "sandbox"]
 license = "MIT OR Apache-2.0"
 categories = ["development-tools", "filesystem"]
 repository = "https://github.com/crazyscot/littertray/"
+# async closures (LitterTray::try_with_async) require 1.85; std::fs:exists requires 1.81
+rust-version = "1.81.0"
+edition = "2021"
 
 [features]
 default = []

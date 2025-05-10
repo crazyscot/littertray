@@ -25,10 +25,15 @@ jobs:
       matrix:
         include:
         # MSRV must pass all checks
-        - rust-version: 1.85.0 # MSRV
+        - rust-version: 1.81.0 # Base MSRV
+          features:
+          may-fail: false
+        - rust-version: 1.85.0 # MSRV for async feature
+          features: --all-features
           may-fail: false
         # Latest stable is allowed to fail, this gives us a heads up
         - rust-version: stable
+          features: --all-features
           may-fail: true
     continue-on-error: ${{ matrix.may-fail }}
     steps:
@@ -54,6 +59,9 @@ jobs:
         if: ${{ !cancelled() }}
       - run: cargo build --locked
         name: Build
+        if: ${{ !cancelled() }}
+      - run: cargo test ${{ matrix.features }}
+        name: Test
         if: ${{ !cancelled() }}
       - run: cargo clippy --locked
         name: Lint
