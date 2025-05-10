@@ -64,7 +64,9 @@ static G_LOCK: Mutex<()> = Mutex::new(());
 
 impl LitterTray {
     /// Runs a closure in a new sandbox, passing the sandbox to the closure.
-    /// The closure must return a [`Result<()>`](std::result::Result).
+    ///
+    /// # Returns
+    /// Whatever the closure returns.
     ///
     /// # Panics
     ///
@@ -78,10 +80,10 @@ impl LitterTray {
     /// let result = LitterTray::try_with(|tray| {
     ///   let _ = tray.create_text("test.txt", "Hello, world!")?;
     ///   assert_eq!(std::fs::read_to_string("test.txt")?, "Hello, world!");
-    ///   Ok(())
+    ///   Ok(42)
     /// }).unwrap();
     /// ```
-    pub fn try_with<F: FnOnce(&mut LitterTray) -> Result<()>>(f: F) -> Result<()> {
+    pub fn try_with<R, F: FnOnce(&mut LitterTray) -> Result<R>>(f: F) -> Result<R> {
         let _guard = G_LOCK.lock().unwrap();
         let dir = TempDir::new()?;
         let mut tray = LitterTray {
@@ -97,8 +99,8 @@ impl LitterTray {
 
     /// Runs a closure in a sandbox, passing the sandbox to the closure.
     ///
-    /// This is a convenience wrapper for [`LitterTray::try_with`] which does not return a `Result`,
-    /// and its closure is expected to return nothing.
+    /// This is a convenience wrapper for [`LitterTray::try_with`] which returns nothing.
+    /// The closure is expected to return nothing.
     ///
     /// # Panics
     ///
@@ -122,13 +124,17 @@ impl LitterTray {
     }
 
     /// Runs an async closure in a new sandbox, passing the sandbox to the closure.
-    /// The closure must return a [`Result<()>`](std::result::Result).
+    ///
+    /// # Returns
+    /// Whatever the closure returns.
     ///
     /// # Panics
     ///
     /// If the global lock was poisoned by a panic in a previous closure (see [Mutex#poisoning](Mutex#poisoning))
     #[cfg(feature = "async")]
-    pub async fn try_with_async<F: AsyncFnOnce(&mut LitterTray) -> Result<()>>(f: F) -> Result<()> {
+    pub async fn try_with_async<R, F: AsyncFnOnce(&mut LitterTray) -> Result<R>>(
+        f: F,
+    ) -> Result<R> {
         let _guard = G_LOCK.lock().unwrap();
         let dir = TempDir::new()?;
         let mut tray = LitterTray {
@@ -278,6 +284,11 @@ mod test {
             })
             .unwrap();
             assert!(!fs::exists(path).unwrap());
+        }
+
+        #[test]
+        fn return_value() {
+            assert_eq!(LitterTray::try_with(|_tray| { Ok(42) }).unwrap(), 42);
         }
 
         #[test]
