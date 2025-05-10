@@ -1,0 +1,53 @@
+[package]
+name = "littertray"
+version = "0.1.0"
+authors = ["Sergio Benitez <sb@sergio.bz>", "Ross Younger <crazyscot@gmail.com>"]
+edition = "2018"
+description = "A filesystem sandbox, intended for unit tests"
+readme = "README.md"
+keywords = ["test"]
+license = "MIT OR Apache-2.0"
+categories = ["development-tools", "filesystem"]
+
+[dependencies]
+tempfile = "3.19.1"
+thiserror = "2.0.12"
+
+[dev-dependencies]
+rusty-fork = "0.3.0"
+tokio = { version = "1.45.0", features = ["fs", "macros", "rt", "rt-multi-thread"] }
+
+[lints.rust]
+dead_code = "warn"
+elided_lifetimes_in_paths = "deny"
+meta_variable_misuse = "deny"
+missing_abi = "deny"
+missing_copy_implementations = "deny"
+missing_debug_implementations = "deny"
+missing_docs = "warn"
+non_ascii_idents = "deny"
+single_use_lifetimes = "deny"
+trivial_casts = "deny"
+trivial_numeric_casts = "deny"
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+unreachable_pub = "deny"
+# unused_crate_dependencies = "deny" # false positives
+unused_extern_crates = "deny"
+unused_lifetimes = "deny"
+unused_results = "deny"
+variant_size_differences = "deny"
+
+[lints.clippy]
+pedantic = { level = "deny", priority = -1 }
+missing_errors_doc = "allow"
+
+[lints.rustdoc]
+bare_urls = "deny"
+broken_intra_doc_links = "deny"
+invalid_codeblock_attributes = "deny"
+invalid_html_tags = "deny"
+invalid_rust_codeblocks = "deny"
+missing_crate_level_docs = "deny"
+private_intra_doc_links = "deny"
+unescaped_backticks = "deny"
