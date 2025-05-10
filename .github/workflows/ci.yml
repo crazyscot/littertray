@@ -1,0 +1,98 @@
+name: CI
+
+on:
+    push:
+      branches:
+        - dev
+        - main
+    pull_request:
+      branches:
+        - dev
+        - main
+    workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CLICOLOR_FORCE: 1
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  checks:
+    name: checks @${{ matrix.rust-version}}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+        # MSRV must pass all checks
+        - rust-version: 1.85.0 # MSRV
+          may-fail: false
+        # Latest stable is allowed to fail, this gives us a heads up
+        - rust-version: stable
+          may-fail: true
+    continue-on-error: ${{ matrix.may-fail }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust ${{ matrix.rust-version }}
+        uses: dtolnay/rust-toolchain@master
+            # this action is used in multiple places
+        with:
+          toolchain: ${{ matrix.rust-version }}
+          components: rustfmt,clippy
+
+      ####### Ensure all tools are loaded before rust-cache, or they will be cached themselves ######
+      - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+            # this action is used in multiple places
+        with:
+          key: ${{ matrix.rust-version }}
+          cache-on-failure: true
+
+      # Within this workflow we will continue on error, to give
+      # maximum information to the developer.
+      - run: cargo fmt --all --check
+        name: Code style
+        if: ${{ !cancelled() }}
+      - run: cargo build --locked
+        name: Build
+        if: ${{ !cancelled() }}
+      - run: cargo clippy --locked
+        name: Lint
+        if: ${{ !cancelled() }}
+      - run: cargo doc --no-deps --locked
+        name: Documentation
+        if: ${{ !cancelled() }}
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+            # this action is used in multiple places
+        with:
+          toolchain: nightly-2025-03-31
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@83254c543806f3224380bf1001d6fac8feaf2d0b # v2.50.10
+            # this action is used in multiple places
+        with:
+          tool: cargo-llvm-cov
+          checksum: true
+      - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+            # this action is used in multiple places
+        with:
+          cache-on-failure: true
+      - name: Run coverage tests
+        run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info --locked
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lcov.info
+          path: lcov.info
+      - name: Send result to codecov
+        uses: codecov/codecov-action@ad3126e916f78f00edff4ed0317cf185271ccc2d # v5.4.2
+        with:
+          #files: lcov.info # not needed, it autodetects
+          #verbose: true # not needed
+          name: lcov
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
