@@ -89,6 +89,7 @@ impl LitterTray {
 
     /// Runs an async closure in a new litter tray, passing the tray to the closure.
     /// The closure must return a Result<()>.
+    #[cfg(feature = "async")]
     pub async fn try_with_async<F: AsyncFnOnce(&mut LitterTray) -> Result<()>>(f: F) -> Result<()> {
         let _guard = G_LOCK.lock().unwrap();
         let dir = TempDir::new()?;
@@ -284,6 +285,7 @@ mod test {
             .unwrap();
         }
 
+        #[cfg(feature = "async")]
         #[test]
         fn async_closure() {
             let rt = tokio::runtime::Runtime::new().unwrap();

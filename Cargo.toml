@@ -9,6 +9,12 @@ keywords = ["test"]
 license = "MIT OR Apache-2.0"
 categories = ["development-tools", "filesystem"]
 
+
+[features]
+default = []
+## Enables support for async littertrays. We test with tokio but any runtime should work.
+async = []
+
 [dependencies]
 tempfile = "3.19.1"
 thiserror = "2.0.12"
