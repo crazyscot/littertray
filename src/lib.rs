@@ -28,6 +28,9 @@ pub enum Error {
     /// (This is only returned by [`LitterTray`] methods; it makes no attempt to intercept filesystem calls.)
     #[error("requested path is outside of the sandbox")]
     Uncontained(PathBuf),
+    /// An error occurred within the closure.
+    #[error(transparent)]
+    Anyhow(#[from] anyhow::Error),
 }
 
 /// Lightweight filesystem sandbox
@@ -65,8 +68,22 @@ static G_LOCK: Mutex<()> = Mutex::new(());
 impl LitterTray {
     /// Runs a closure in a new sandbox, passing the sandbox to the closure.
     ///
+    /// # Closure signature
+    ///
+    /// `FnOnce(&mut LitterTray) -> anyhow::Result<R>` for any R
+    ///
     /// # Returns
-    /// Whatever the closure returns.
+    ///
+    /// The return type `[littertray::Result](Result)<R>`
+    /// wraps the closure's return type:
+    /// - `Ok()` (success) values are passed through
+    /// - `Err()` values are of the local `[littertray::Error](Error)` type, which signal
+    ///   closure-specific errors, or may wrap a generic [`anyhow::Error`].
+    ///
+    /// # Type parameters
+    ///
+    /// - F: Closure function. This is inferred.
+    /// - R: The Result type returned by the closure on success.
     ///
     /// # Panics
     ///
@@ -74,7 +91,7 @@ impl LitterTray {
     ///
     /// # Example
     ///
-    /// ```
+    /// ```rust
     /// use littertray::LitterTray;
     ///
     /// let result = LitterTray::try_with(|tray| {
@@ -83,7 +100,11 @@ impl LitterTray {
     ///   Ok(42)
     /// }).unwrap();
     /// ```
-    pub fn try_with<R, F: FnOnce(&mut LitterTray) -> Result<R>>(f: F) -> Result<R> {
+    #[track_caller]
+    pub fn try_with<F, R>(f: F) -> crate::Result<R>
+    where
+        F: FnOnce(&mut LitterTray) -> anyhow::Result<R>,
+    {
         let _guard = G_LOCK.lock().unwrap();
         let dir = TempDir::new()?;
         let mut tray = LitterTray {
@@ -94,13 +115,13 @@ impl LitterTray {
         std::env::set_current_dir(tray.directory())?;
         let outcome = f(&mut tray);
         drop(tray); // Force cleanup & reset of working directory before we release the lock
-        outcome
+        outcome.map_err(std::convert::Into::into)
     }
 
     /// Runs a closure in a sandbox, passing the sandbox to the closure.
     ///
     /// This is a convenience wrapper for [`LitterTray::try_with`] which returns nothing.
-    /// The closure is expected to return nothing.
+    /// The closure is expected to return nothing and must therefore be Infallible.
     ///
     /// # Panics
     ///
@@ -132,9 +153,11 @@ impl LitterTray {
     ///
     /// If the global lock was poisoned by a panic in a previous closure (see [Mutex#poisoning](Mutex#poisoning))
     #[cfg(feature = "async")]
-    pub async fn try_with_async<R, F: AsyncFnOnce(&mut LitterTray) -> Result<R>>(
-        f: F,
-    ) -> Result<R> {
+    pub async fn try_with_async<F, R>(f: F) -> Result<R>
+    where
+        F: AsyncFnOnce(&mut LitterTray) -> anyhow::Result<R>,
+    {
+        #![allow(clippy::await_holding_lock)]
         let _guard = G_LOCK.lock().unwrap();
         let dir = TempDir::new()?;
         let mut tray = LitterTray {
@@ -145,7 +168,7 @@ impl LitterTray {
         std::env::set_current_dir(tray.directory())?;
         let outcome = f(&mut tray).await;
         drop(tray); // Force cleanup & reset of working directory before we release the lock
-        outcome
+        outcome.map_err(std::convert::Into::into)
     }
 
     /// Returns the absolute path to the temporary directory that is this sandbox.
@@ -339,6 +362,21 @@ mod test {
             })
             .unwrap();
         }
+
+        #[test]
+        fn error_anyhow() {
+            let err : crate::Error = LitterTray::try_with(|_| {
+                anyhow::bail!("test error");
+                #[allow(unreachable_code)]
+                Ok(42)
+            }).unwrap_err();
+            assert!(err.to_string().contains("test error"));
+            match err {
+                crate::Error::Anyhow(e) => assert!(e.to_string().contains("test error")),
+                _ => panic!("wrong error type"),
+            }
+        }
+
     }
 
     #[cfg(feature = "async")]
