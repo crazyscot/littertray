@@ -14,10 +14,11 @@ edition = "2021"
 
 [features]
 default = []
-## Enables support for async littertrays. We test with tokio but any runtime should work.
+## Enables support for async closures. We test with tokio but any runtime should work.
 async = []
 
 [dependencies]
+anyhow = "1.0.98"
 tempfile = "3.19.1"
 thiserror = "2.0.12"
 
