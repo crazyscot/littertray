@@ -5,6 +5,9 @@
 //! This is a derivative work of
 //! [`figment::Jail`](https://docs.rs/figment/latest/figment/struct.Jail.html)
 //! but simpler (no environment variables), and it supports async closures.
+//!
+//! ## Feature flags
+#![doc = document_features::document_features!()]
 
 use std::fs::{self, File};
 use std::io::{BufWriter, Write as _};
@@ -14,10 +17,10 @@ use std::sync::Mutex;
 use tempfile::TempDir;
 use thiserror::Error;
 
-/// The result type used by [`LitterTray`]
+/// The result type used by [`LitterTray`].
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-/// The error type used by [`LitterTray`]
+/// The error type used by [`LitterTray`].
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum Error {
@@ -72,18 +75,21 @@ impl LitterTray {
     ///
     /// `FnOnce(&mut LitterTray) -> anyhow::Result<R>` for any R
     ///
+    /// That is to say, it's a closure that takes no arguments, and returns any Result type.
+    /// (If you have nothing to return, return `Ok(())`, or see [`run()`](#method.run).)
+    ///
     /// # Returns
     ///
-    /// The return type `[littertray::Result](Result)<R>`
+    /// The return type [`littertray::Result<R>`](Result)
     /// wraps the closure's return type:
-    /// - `Ok()` (success) values are passed through
-    /// - `Err()` values are of the local `[littertray::Error](Error)` type, which signal
-    ///   closure-specific errors, or may wrap a generic [`anyhow::Error`].
+    /// - `Ok(_)` (success) values are passed through
+    /// - `Err(_)` values are of the local [`littertray::Error`](enum@Error) type, which signal
+    ///   littertray-specific errors, or may wrap a generic [`anyhow::Error`].
     ///
     /// # Type parameters
     ///
-    /// - F: Closure function. This is inferred.
-    /// - R: The Result type returned by the closure on success.
+    /// - F: Closure function. This is usually inferred.
+    /// - R: The Result type returned by the closure on success. This is usually inferred.
     ///
     /// # Panics
     ///
@@ -121,7 +127,7 @@ impl LitterTray {
     /// Runs a closure in a sandbox, passing the sandbox to the closure.
     ///
     /// This is a convenience wrapper for [`LitterTray::try_with`] which returns nothing.
-    /// The closure is expected to return nothing and must therefore be Infallible.
+    /// The closure is expected to return nothing.
     ///
     /// # Panics
     ///
@@ -147,7 +153,7 @@ impl LitterTray {
     /// Runs an async closure in a new sandbox, passing the sandbox to the closure.
     ///
     /// # Returns
-    /// Whatever the closure returns.
+    /// Whatever the closure returns. Same as [`try_with()`](#method.try_with).
     ///
     /// # Panics
     ///

@@ -19,6 +19,7 @@ async = []
 
 [dependencies]
 anyhow = "1.0.98"
+document-features = "0.2.11"
 tempfile = "3.19.1"
 thiserror = "2.0.12"
 
