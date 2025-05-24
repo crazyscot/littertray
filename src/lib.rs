@@ -265,7 +265,7 @@ impl Drop for LitterTray {
 /// Remove any dots from the path by popping components as needed.
 fn dedot<P: AsRef<Path>>(path: P) -> PathBuf {
     #[allow(clippy::enum_glob_use)]
-    use std::path::Component::*;
+    use std::path::Component::{CurDir, Normal, ParentDir, Prefix, RootDir};
 
     let mut comps = vec![];
     for component in path.as_ref().components() {
