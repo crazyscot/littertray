@@ -2,8 +2,8 @@
 ![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/crazyscot/littertray)
 [![Build status](https://github.com/crazyscot/littertray/actions/workflows/ci.yml/badge.svg)](https://github.com/crazyscot/littertray/actions/workflows/ci.yml)
 [![Documentation](https://img.shields.io/docsrs/engineering-repr)](https://docs.rs/littertray/)
-![License](https://img.shields.io/badge/license-MIT-blue)
-[![Coverage](https://coveralls.io/repos/github/crazyscot/littertray/badge.svg?branch=main)](https://coveralls.io/github/crazyscot/littertray?branch=main)
+![GitHub License](https://img.shields.io/github/license/crazyscot/littertray)
+[![codecov](https://codecov.io/gh/crazyscot/littertray/graph/badge.svg?token=EA3A7ETRNZ)](https://codecov.io/gh/crazyscot/littertray)
 
 Lightweight sandboxing for tests that write to the filesystem
 
