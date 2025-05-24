@@ -17,7 +17,14 @@ You provide a closure that runs in the sandbox; there are convenience methods to
 
 When the struct is dropped, the tempdir is cleaned up.
 
-This crate is a derivative work of [`figment::Jail`](https://docs.rs/figment/latest/figment/struct.Jail.html).
+### See also
+
+This crate is inspired by and is a derivative work of [`figment::Jail`](https://docs.rs/figment/latest/figment/struct.Jail.html).
+
+Differences:
+
+- This crate adds support for async closures.
+- This crate does not currently support environment variables.
 
 ## Examples
 
