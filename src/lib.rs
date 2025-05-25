@@ -8,19 +8,22 @@
 //!
 //! ## Feature flags
 #![doc = document_features::document_features!()]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 use std::fs::{self, File};
 use std::io::{BufWriter, Write as _};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 use tempfile::TempDir;
 use thiserror::Error;
 
-/// The result type used by [`LitterTray`].
-pub type Result<T, E = Error> = std::result::Result<T, E>;
+/// The result type used internally by [`LitterTray`].
+pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// The error type used by [`LitterTray`].
+///
+/// Normally, Errors generated within the `LitterTray` are coerced to [`anyhow::Error`] by the closure.
+/// However you can arrange to send these outside of the tray and reason about them if this is useful.
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum Error {
@@ -31,9 +34,6 @@ pub enum Error {
     /// (This is only returned by [`LitterTray`] methods; it makes no attempt to intercept filesystem calls.)
     #[error("requested path is outside of the sandbox")]
     Uncontained(PathBuf),
-    /// An error occurred within the closure.
-    #[error(transparent)]
-    Anyhow(#[from] anyhow::Error),
 }
 
 /// Lightweight filesystem sandbox
@@ -47,14 +47,30 @@ pub enum Error {
 ///
 /// On drop, the temporary directory is automatically cleaned up.
 ///
-/// <div class="warning">
-/// While this crate contains no <i>unsafe</i> Rust, it is not without limitation.
-/// <tt>LitterTray</tt> uses a global lock to prevent tests from conflicting when run in parallel
+/// # Safety / reliability
+///
+/// While this crate contains no _unsafe_ Rust, it is not without limitation.
+/// There is a global lock to prevent tests from conflicting when run in parallel
 /// (which is cargo's default behaviour).
-/// This has the effect of serialising your tests.
-/// If you want to parallelise testing, consider
-/// <a href="https://docs.rs/rusty-fork/latest/rusty_fork/">rusty_fork</a>.
+///
+/// <div class="warning">
+///
+/// Exercise caution when using this crate within `rusty_fork_test` or similar mechanisms!
+///
 /// </div>
+///
+/// There is a race condition:
+/// - if tests run in a child process ([`rusty_fork`](https://docs.rs/rusty-fork/latest/rusty_fork/)); _and_
+/// - if any `LitterTray` tests run _not_ in a child process.
+///
+/// In this case, the tests which run in a child process sometimes start up in an invalid state
+/// (current working directory invalid/nonexistent).
+///
+/// The solution is to either:
+/// - not use `rusty_fork`; _or_
+/// - _always_ run `LitterTray` tests within `rusty_fork`.
+///
+/// Tests using `LitterTray` are always safe from each other, due to the global lock.
 ///
 #[derive(Debug)]
 pub struct LitterTray {
@@ -63,28 +79,62 @@ pub struct LitterTray {
     saved_cwd: PathBuf,
 }
 
-/// This mutex ensures that only one test can use a litter tray at once.
-/// This is necessary because it changes the process working directory.
-/// If you want to parallelise testing, consider [`rusty_fork`](https://docs.rs/rusty-fork/latest/rusty_fork/).
-static G_LOCK: Mutex<()> = Mutex::new(());
+#[cfg(not(feature = "async"))]
+/// Synchronisation primitives when the `async` feature is NOT enabled.
+mod sync {
+    use std::sync::LazyLock;
+    use std::sync::Mutex;
+
+    /// Locks the global lock synchronously
+    ///
+    /// # Panics
+    ///
+    /// If the global lock was poisoned by a panic in a previous closure.
+    /// See [`Mutex#poisoning`](std::sync::Mutex#poisoning).
+    #[allow(clippy::module_name_repetitions)]
+    pub fn global_lock_sync() -> std::sync::MutexGuard<'static, ()> {
+        G_LOCK.lock().unwrap()
+    }
+    static G_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+}
+#[cfg(not(feature = "async"))]
+pub use sync::global_lock_sync;
+
+#[cfg(feature = "async")]
+/// Synchronisation primitives when the `async` feature is enabled.
+mod r#async {
+    use std::sync::LazyLock;
+    use tokio::sync::Mutex;
+
+    /// Locks the global lock synchronously (for use by non-async functions).
+    /// Async functions should use [`global_lock_async`].
+    pub fn global_lock_sync() -> tokio::sync::MutexGuard<'static, ()> {
+        G_LOCK.blocking_lock()
+    }
+    /// Locks the global lock in an async manner (for use by async functions).
+    /// Non-async functions should use [`global_lock_sync`].
+    pub async fn global_lock_async() -> tokio::sync::MutexGuard<'static, ()> {
+        G_LOCK.lock().await
+    }
+    static G_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+}
+
+#[cfg(feature = "async")]
+pub use r#async::{global_lock_async, global_lock_sync};
 
 impl LitterTray {
-    /// Runs a closure in a new sandbox, passing the sandbox to the closure.
+    /// Runs a closure in a sandbox, passing the sandbox to the closure.
     ///
     /// # Closure signature
     ///
     /// `FnOnce(&mut LitterTray) -> anyhow::Result<R>` for any R
     ///
-    /// That is to say, it's a closure that takes no arguments, and returns any Result type.
+    /// That is to say, it's a closure that takes one argument (the `LitterTray` itself), and can return any Result.
     /// (If you have nothing to return, return `Ok(())`, or see [`run()`](#method.run).)
     ///
     /// # Returns
     ///
-    /// The return type [`littertray::Result<R>`](Result)
-    /// wraps the closure's return type:
-    /// - `Ok(_)` (success) values are passed through
-    /// - `Err(_)` values are of the local [`littertray::Error`](enum@Error) type, which signal
-    ///   littertray-specific errors, or may wrap a generic [`anyhow::Error`].
+    /// The return value of the closure.
     ///
     /// # Type parameters
     ///
@@ -93,7 +143,9 @@ impl LitterTray {
     ///
     /// # Panics
     ///
-    /// If the global lock was poisoned by a panic in a previous closure (see [Mutex#poisoning](Mutex#poisoning))
+    /// If the global lock was poisoned by a panic in a previous closure.
+    /// (This can only happen with the `async` feature is _not_ activated.
+    /// See [`Mutex#poisoning`](std::sync::Mutex#poisoning)).
     ///
     /// # Example
     ///
@@ -107,12 +159,12 @@ impl LitterTray {
     /// }).unwrap();
     /// ```
     #[track_caller]
-    pub fn try_with<F, R>(f: F) -> crate::Result<R>
+    pub fn try_with<F, R>(f: F) -> anyhow::Result<R>
     where
         F: FnOnce(&mut LitterTray) -> anyhow::Result<R>,
     {
-        let _guard = G_LOCK.lock().unwrap();
         let dir = TempDir::new()?;
+        let guard = global_lock_sync();
         let mut tray = LitterTray {
             canonical_dir: dir.path().canonicalize()?,
             _dir: dir,
@@ -121,17 +173,20 @@ impl LitterTray {
         std::env::set_current_dir(tray.directory())?;
         let outcome = f(&mut tray);
         drop(tray); // Force cleanup & reset of working directory before we release the lock
-        outcome.map_err(std::convert::Into::into)
+        drop(guard);
+        outcome
     }
 
     /// Runs a closure in a sandbox, passing the sandbox to the closure.
     ///
     /// This is a convenience wrapper for [`LitterTray::try_with`] which returns nothing.
-    /// The closure is expected to return nothing.
+    /// The closure must return nothing.
     ///
     /// # Panics
     ///
-    /// If the global lock was poisoned by a panic in a previous closure (see [Mutex#poisoning](Mutex#poisoning))
+    /// If the global lock was poisoned by a panic in a previous closure.
+    /// (This can only happen with the `async` feature is _not_ activated.
+    /// See [`Mutex#poisoning`](std::sync::Mutex#poisoning)).
     ///
     /// # Example
     ///
@@ -150,22 +205,16 @@ impl LitterTray {
         });
     }
 
-    /// Runs an async closure in a new sandbox, passing the sandbox to the closure.
+    /// Runs an async closure in a sandbox, passing the sandbox to the closure.
     ///
-    /// # Returns
-    /// Whatever the closure returns. Same as [`try_with()`](#method.try_with).
-    ///
-    /// # Panics
-    ///
-    /// If the global lock was poisoned by a panic in a previous closure (see [Mutex#poisoning](Mutex#poisoning))
+    /// This is the same as [`try_with()`](#method.try_with), but async.
     #[cfg(feature = "async")]
-    pub async fn try_with_async<F, R>(f: F) -> Result<R>
+    pub async fn try_with_async<F, R>(f: F) -> anyhow::Result<R>
     where
         F: AsyncFnOnce(&mut LitterTray) -> anyhow::Result<R>,
     {
-        #![allow(clippy::await_holding_lock)]
-        let _guard = G_LOCK.lock().unwrap();
         let dir = TempDir::new()?;
+        let guard = global_lock_async().await;
         let mut tray = LitterTray {
             canonical_dir: dir.path().canonicalize()?,
             _dir: dir,
@@ -174,7 +223,8 @@ impl LitterTray {
         std::env::set_current_dir(tray.directory())?;
         let outcome = f(&mut tray).await;
         drop(tray); // Force cleanup & reset of working directory before we release the lock
-        outcome.map_err(std::convert::Into::into)
+        drop(guard);
+        outcome
     }
 
     /// Returns the absolute path to the temporary directory that is this sandbox.
@@ -286,129 +336,180 @@ fn dedot<P: AsRef<Path>>(path: P) -> PathBuf {
 }
 
 #[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 mod test {
     use super::{dedot, LitterTray};
-    use rusty_fork::rusty_fork_test;
     use std::{fs, path::PathBuf};
 
-    fn getcwd() -> PathBuf {
-        std::env::current_dir().unwrap()
+    #[test]
+    fn drop_removes_tempdir() {
+        let mut path = PathBuf::new();
+        LitterTray::try_with(|tray| {
+            let _ = tray.create_text("test.txt", "Hello, world!").unwrap();
+            path = tray.directory().to_path_buf();
+            assert!(fs::exists(&path)?);
+            assert!(fs::exists("test.txt")?);
+            Ok(())
+        })
+        .unwrap();
+        assert!(!fs::exists(path).unwrap());
     }
 
-    // These tests run in forks to enable parallelisation.
-    // They change the working directory and would trample each other;
-    // while the global lock prevents trouble, running them this way
-    // allows for parallelisation.
+    #[test]
+    fn return_value() {
+        assert_eq!(LitterTray::try_with(|_tray| { Ok(42) }).unwrap(), 42);
+    }
 
-    rusty_fork_test! {
-        #[test]
-        fn drop_removes_tempdir() {
+    fn getcwd() -> Option<PathBuf> {
+        std::env::current_dir().ok()
+    }
+
+    #[test]
+    fn working_directory_restored() {
+        let prev_dir = getcwd();
+        let mut tray_dir = PathBuf::new();
+        LitterTray::run(|tray| {
+            tray_dir = tray.directory().to_path_buf();
+            assert_ne!(prev_dir.unwrap_or_default(), tray_dir);
+        });
+        // We can't usefully assert that prev_dir == getcwd(), because another test might be running
+        // (now the tray has been dropped and the global lock released). However we can meaningfully
+        // assert that we are no longer in the tray dir, and that it has been removed.
+        assert_ne!(tray_dir, getcwd().unwrap_or_default());
+        assert!(!std::fs::exists(tray_dir).unwrap());
+    }
+
+    #[test]
+    fn absolute_path() {
+        LitterTray::try_with(|tray| {
+            // Creating a file by absolute path within the sandbox works
+            let mut path = PathBuf::from(tray.directory());
+            path.push("file.txt");
+            let _ = tray.create_text(path, "hi").unwrap();
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn absolute_path_outside_fails_our_error_returned() {
+        let inner_error = LitterTray::try_with(|tray| {
+            // Creating a file by absolute path outside the sandbox is blocked
             let mut path = PathBuf::new();
-            LitterTray::try_with(|tray| {
-                let _ = tray.create_text("test.txt", "Hello, world!").unwrap();
-                path = tray.directory().to_path_buf();
-                assert!(fs::exists(&path)?);
-                assert!(fs::exists("test.txt")?);
-                Ok(())
-            })
-            .unwrap();
-            assert!(!fs::exists(path).unwrap());
-        }
+            path.push("/not-a-litter-tray");
+            let res = tray.create_text(path, "hi").unwrap_err();
+            Ok(res)
+        })
+        .unwrap();
+        let crate::Error::Uncontained(_) = inner_error else {
+            panic!("Wrong inner error type; got {inner_error:?}");
+        };
+    }
 
-        #[test]
-        fn return_value() {
-            assert_eq!(LitterTray::try_with(|_tray| { Ok(42) }).unwrap(), 42);
-        }
+    #[test]
+    fn inner_error_coerced_to_anyhow() {
+        let e = LitterTray::try_with(|tray| {
+            // Creating a file by absolute path outside the sandbox is blocked
+            let mut path = PathBuf::new();
+            path.push("/not-a-litter-tray");
+            let res = tray.create_text(path, "hi")?;
+            Ok(res)
+        })
+        .unwrap_err();
+        assert!(e
+            .to_string()
+            .contains("requested path is outside of the sandbox"));
+        // but this has been coerced to anyhow, so we cannot match it against crate::Error.
+    }
 
-        #[test]
-        fn working_directory_restored() {
-            let prev_dir = getcwd();
-            LitterTray::run(|tray| {
-                let _ = tray.create_text("hi", "hi").unwrap();
-                assert_ne!(prev_dir, getcwd());
-            });
-            assert_eq!(prev_dir, getcwd());
-        }
-
-        #[test]
-        fn absolute_path() {
-            LitterTray::try_with(|tray| {
-                // Creating a file by absolute path within the sandbox works
-                let mut path = PathBuf::from(tray.directory());
-                path.push("file.txt");
-                let _ = tray.create_text(path, "hi").unwrap();
-                Ok(())
-            })
-            .unwrap();
-        }
-
-        #[test]
-        fn absolute_path_outside_fails() {
-            LitterTray::try_with(|tray| {
-                // Creating a file by absolute path outside the sandbox is blocked
-                let mut path = PathBuf::new();
-                path.push("/not-a-litter-tray");
-                let _ = tray.create_text(path, "hi").unwrap_err();
-                Ok(())
-            })
-            .unwrap();
-        }
-
-        #[cfg(unix)]
-        #[test]
-        fn symlinks_work() {
-            LitterTray::try_with(|tray| {
-                let _ = tray.make_symlink("file1", "file2")?;
-                // The symlink does not exist, because the original file is not there
-                assert!(!std::fs::exists("file2")?);
-                // Now create file1 and confirm that file2 exists
-                let _ = tray.create_text("file1", "hi there");
-                assert!(std::fs::exists("file2")?);
-                Ok(())
-            })
-            .unwrap();
-        }
-
-        #[test]
-        fn error_anyhow() {
-            let err : crate::Error = LitterTray::try_with(|_| {
-                anyhow::bail!("test error");
-                #[allow(unreachable_code)]
-                Ok(42)
-            }).unwrap_err();
-            assert!(err.to_string().contains("test error"));
-            match err {
-                crate::Error::Anyhow(e) => assert!(e.to_string().contains("test error")),
-                _ => panic!("wrong error type"),
-            }
-        }
-
+    #[cfg(unix)]
+    #[test]
+    fn symlinks_work() {
+        LitterTray::try_with(|tray| {
+            let _ = tray.make_symlink("file1", "file2")?;
+            // The symlink does not exist, because the original file is not there
+            assert!(!std::fs::exists("file2")?);
+            // Now create file1 and confirm that file2 exists
+            let _ = tray.create_text("file1", "hi there");
+            assert!(std::fs::exists("file2")?);
+            Ok(())
+        })
+        .unwrap();
     }
 
     #[cfg(feature = "async")]
-    rusty_fork_test! {
-        // trap: cfg macros don't work within rusty_fork_test, you have to put them outside the macro.
-        #[test]
-        fn async_closure() {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
-                LitterTray::try_with_async(async |tray| {
-                    let _ = tray.create_text("test.txt", "Hello, world!").unwrap();
-                    assert_eq!(
-                        tokio::fs::read_to_string("test.txt").await.unwrap(),
-                        "Hello, world!"
-                    );
-                    Ok(())
-                })
-                .await
-                .unwrap();
-            });
-        }
+    #[test]
+    fn async_closure() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            LitterTray::try_with_async(async |tray| {
+                let _ = tray.create_text("test.txt", "Hello, world!").unwrap();
+                assert_eq!(
+                    tokio::fs::read_to_string("test.txt").await.unwrap(),
+                    "Hello, world!"
+                );
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn async_test() {
+        LitterTray::try_with_async(async |tray| {
+            let _ = tray.create_text("test.txt", "Hello, world!").unwrap();
+            assert_eq!(
+                tokio::fs::read_to_string("test.txt").await.unwrap(),
+                "Hello, world!"
+            );
+            Ok(())
+        })
+        .await
+        .unwrap();
+    }
+
+    #[test]
+    fn test_returning_anyhow_result() -> anyhow::Result<()> {
+        LitterTray::try_with(|_| Ok(()))
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn async_test_returning_anyhow_result() -> anyhow::Result<()> {
+        LitterTray::try_with_async(async |_| Ok(())).await
     }
 
     #[test]
     fn dedot_test() {
         assert_eq!(dedot(PathBuf::from("/./a/../b/c/.")), PathBuf::from("/b/c"));
         assert_eq!(dedot(PathBuf::from(".")), PathBuf::from(""));
+    }
+
+    #[test]
+    #[ignore]
+    fn panic_in_closure_propagates() {
+        // CAUTION: When run in sync mode, this test poisons the global mutex. Later tests will fail!
+        // rusty_fork incurs the race condition described above.
+        // Omit this test from CI, until we can figure out a proper solution.
+        let r = std::panic::catch_unwind(|| {
+            LitterTray::run(|_| {
+                panic!("at the disco");
+            });
+        });
+        assert!(r.is_err());
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    #[should_panic = "at the disco"]
+    async fn panic_in_async_propagates() {
+        let _ = LitterTray::try_with_async(async |_| {
+            panic!("at the disco");
+            #[allow(unreachable_code)] // sets the return type of the closure
+            Ok(())
+        })
+        .await;
     }
 }
