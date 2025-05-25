@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/crazyscot/littertray/compare/v0.1.0...v0.2.0)
+
+### 🐛 Bug Fixes
+
+- [**breaking**] Overhaul locking soundness, return types - ([514872d](https://github.com/crazyscot/littertray/commit/514872d60ce22d3ac2332da33a3e0ead9f2014eb))
+
+### 🏗️ Build, packaging & CI
+
+- Include doctests in code coverage - ([c4013d8](https://github.com/crazyscot/littertray/commit/c4013d8397d87ab29d8d9d95f64216cae3122275))
+
+### ⚙️ Miscellaneous Tasks
+
+- Enable all features on rust-analyzer, resolve warnings - ([4781ac9](https://github.com/crazyscot/littertray/commit/4781ac90df62c7874f0da7236f162597249a1c3c))
+- Fix badges on README - ([0c98f15](https://github.com/crazyscot/littertray/commit/0c98f1554dfa01233e30d0af1c25b63af5fdd69a))
+
+
 ## [0.1.0]
 
 ### ⛰️ Features
