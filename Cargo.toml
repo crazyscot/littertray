@@ -1,6 +1,6 @@
 [package]
 name = "littertray"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Ross Younger <crazyscot@gmail.com>"]
 description = "Lightweight sandboxing for tests that write to the filesystem"
 readme = "README.md"
