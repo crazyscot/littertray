@@ -10,6 +10,9 @@
 #![doc = document_features::document_features!()]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
+#[cfg(all(feature = "async", not(async_supported)))]
+compile_error!(r#"The "async" feature requires Rust compiler version 1.85 or later."#);
+
 use std::fs::{self, File};
 use std::io::{BufWriter, Write as _};
 use std::path::{Path, PathBuf};
@@ -208,7 +211,7 @@ impl LitterTray {
     /// Runs an async closure in a sandbox, passing the sandbox to the closure.
     ///
     /// This is the same as [`try_with()`](#method.try_with), but async.
-    #[cfg(feature = "async")]
+    #[cfg(all(feature = "async", async_supported))]
     pub async fn try_with_async<F, R>(f: F) -> anyhow::Result<R>
     where
         F: AsyncFnOnce(&mut LitterTray) -> anyhow::Result<R>,
@@ -437,48 +440,9 @@ mod test {
         .unwrap();
     }
 
-    #[cfg(feature = "async")]
-    #[test]
-    fn async_closure() {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            LitterTray::try_with_async(async |tray| {
-                let _ = tray.create_text("test.txt", "Hello, world!").unwrap();
-                assert_eq!(
-                    tokio::fs::read_to_string("test.txt").await.unwrap(),
-                    "Hello, world!"
-                );
-                Ok(())
-            })
-            .await
-            .unwrap();
-        });
-    }
-
-    #[cfg(feature = "async")]
-    #[tokio::test]
-    async fn async_test() {
-        LitterTray::try_with_async(async |tray| {
-            let _ = tray.create_text("test.txt", "Hello, world!").unwrap();
-            assert_eq!(
-                tokio::fs::read_to_string("test.txt").await.unwrap(),
-                "Hello, world!"
-            );
-            Ok(())
-        })
-        .await
-        .unwrap();
-    }
-
     #[test]
     fn test_returning_anyhow_result() -> anyhow::Result<()> {
         LitterTray::try_with(|_| Ok(()))
-    }
-
-    #[cfg(feature = "async")]
-    #[tokio::test]
-    async fn async_test_returning_anyhow_result() -> anyhow::Result<()> {
-        LitterTray::try_with_async(async |_| Ok(())).await
     }
 
     #[test]
@@ -500,8 +464,60 @@ mod test {
         });
         assert!(r.is_err());
     }
+}
+
+/*
+ * Ugh, this is a bit curly...
+ *
+ * Simply disabling this module with #[cfg(all(test, feature = "async", async_supported))]
+ * isn't sufficient; the 1.81 compiler still complains that async closures are unstable.
+ *
+ * However, cfg_if actually removes the tokens from the AST altogether. So we'll use that.
+ */
+cfg_if::cfg_if! { if #[cfg(async_supported)] {
+#[cfg(all(test, feature = "async", async_supported))]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod test_async {
+    #[allow(unused_imports)]
+    use crate::LitterTray;
 
     #[cfg(feature = "async")]
+    #[test]
+    fn async_closure() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            LitterTray::try_with_async(async |tray| {
+                let _ = tray.create_text("test.txt", "Hello, world!").unwrap();
+                assert_eq!(
+                    tokio::fs::read_to_string("test.txt").await.unwrap(),
+                    "Hello, world!"
+                );
+                Ok(())
+            })
+            .await
+            .unwrap();
+        });
+    }
+
+    #[tokio::test]
+    async fn async_test() {
+        LitterTray::try_with_async(async |tray| {
+            let _ = tray.create_text("test.txt", "Hello, world!").unwrap();
+            assert_eq!(
+                tokio::fs::read_to_string("test.txt").await.unwrap(),
+                "Hello, world!"
+            );
+            Ok(())
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn async_test_returning_anyhow_result() -> anyhow::Result<()> {
+        LitterTray::try_with_async(async |_| Ok(())).await
+    }
+
     #[tokio::test]
     #[should_panic = "at the disco"]
     async fn panic_in_async_propagates() {
@@ -512,4 +528,5 @@ mod test {
         })
         .await;
     }
-}
+} // mod test_async
+}} // cfg_if!

@@ -19,6 +19,7 @@ async = ["dep:tokio"]
 
 [dependencies]
 anyhow = "1.0.98"
+cfg-if = "1.0.0"
 document-features = "0.2.11"
 tempfile = "3.20.0"
 thiserror = "2.0.12"
@@ -63,3 +64,6 @@ invalid_rust_codeblocks = "deny"
 missing_crate_level_docs = "deny"
 private_intra_doc_links = "deny"
 unescaped_backticks = "deny"
+
+[build-dependencies]
+rustversion = "1.0.21"
