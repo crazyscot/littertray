@@ -80,7 +80,7 @@ jobs:
         with:
           toolchain: nightly-2025-03-31
           components: llvm-tools-preview
-      - uses: taiki-e/install-action@83254c543806f3224380bf1001d6fac8feaf2d0b # v2.50.10
+      - uses: taiki-e/install-action@735e5933943122c5ac182670a935f54a949265c1 # v2.52.4
             # this action is used in multiple places
         with:
           tool: cargo-llvm-cov
