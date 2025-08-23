@@ -1,15 +1,11 @@
-name: CI
+name: Rust
 
 on:
-    push:
-      branches:
-        - dev
-        - main
-    pull_request:
-      branches:
-        - dev
-        - main
-    workflow_dispatch:
+  push:
+    branches: ["main", "dev"]
+  pull_request:
+    branches: ["main", "dev"]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -19,78 +15,109 @@ env:
 
 jobs:
   checks:
-    name: checks @${{ matrix.rust-version}}
+    name: checks @${{ matrix.rust-version }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
+      fail-fast: false # useful for testing
       matrix:
         include:
-        # MSRV must pass all checks
-        - rust-version: 1.81.0 # Base MSRV
-          features:
-          may-fail: false
-        - rust-version: 1.85.0 # MSRV for async feature
-          features: --all-features
-          may-fail: false
-        # Latest stable is allowed to fail, this gives us a heads up
-        - rust-version: stable
-          features: --all-features
-          may-fail: true
+          # MSRV must pass all checks
+          - rust-version: 1.81.0 # Base MSRV
+            features: ""
+            cache: true
+            may-fail: false
+          - rust-version: 1.85.0 # MSRV for async feature
+            features: --all-features
+            cache: true
+            may-fail: false
+          # Latest stable is allowed to fail, this gives us a heads up
+          - rust-version: stable
+            features: --all-features
+            cache: true
+            may-fail: true
+          # Nightly is allowed to fail, this gives us a heads up
+          - rust-version: nightly
+            features: --all-features
+            may-fail: true
+            cache: false
+
     continue-on-error: ${{ matrix.may-fail }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Rust ${{ matrix.rust-version }}
         uses: dtolnay/rust-toolchain@master
-            # this action is used in multiple places
         with:
           toolchain: ${{ matrix.rust-version }}
-          components: rustfmt,clippy
+          components: rustfmt,clippy,rust-src
 
-      ######## Ensure all tools are loaded before rust-cache, or they will be cached themselves ######
-      #- uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
-      #      # this action is used in multiple places
-      #  with:
-      #    key: ${{ matrix.rust-version }}
-      #    cache-on-failure: true
+      ####### Ensure all tools are loaded before rust-cache, or they will be cached themselves ######
+      - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+        with:
+          key: ${{ matrix.rust-version }}
+          cache-on-failure: true
+        if: ${{ matrix.cache && !cancelled() }}
 
       # Within this workflow we will continue on error, to give
       # maximum information to the developer.
       - run: cargo fmt --all --check
-        name: Code style
         if: ${{ !cancelled() }}
-      - run: cargo build --locked
-        name: Build
+      - run: cargo test --locked ${{ matrix.features }}
         if: ${{ !cancelled() }}
-      - run: cargo test ${{ matrix.features }}
-        name: Test
+      - run: cargo clippy --tests --workspace --locked ${{ matrix.features }}
         if: ${{ !cancelled() }}
-      - run: cargo clippy --locked
-        name: Lint
-        if: ${{ !cancelled() }}
-      - run: cargo doc --no-deps --locked
-        name: Documentation
+
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RUSTDOCFLAGS: -Dwarnings
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          # update periodically
+          toolchain: nightly-2025-07-31
+          components: rust-src
+      - uses: dtolnay/install@cargo-docs-rs
+      ####### Ensure all tools are loaded before rust-cache, or they will be cached themselves ######
+      - uses:
+          Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+          # this action is used in multiple places
+        with:
+          cache-on-failure: true
+      - run: cargo docs-rs --locked
+      # Continue on error for maximum information
+      - run: cargo doc --no-deps --document-private-items --locked
         if: ${{ !cancelled() }}
 
   coverage:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
-            # this action is used in multiple places
+        uses:
+          dtolnay/rust-toolchain@master
+          # this action is used in multiple places
         with:
-          toolchain: nightly-2025-03-31
-          components: llvm-tools-preview
-      - uses: taiki-e/install-action@83254c543806f3224380bf1001d6fac8feaf2d0b # v2.50.10
-            # this action is used in multiple places
+          # update periodically
+          toolchain: nightly-2025-07-31
+          components: llvm-tools-preview,rust-src
+      - uses:
+          taiki-e/install-action@33734a118689b0b418824fb78ea2bf18e970b43b # v2.50.4
+          # this action is used in multiple places
         with:
           tool: cargo-llvm-cov
           checksum: true
-      #- uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
-      #      # this action is used in multiple places
-      #  with:
-      #    cache-on-failure: true
+      - uses:
+          Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+          # this action is used in multiple places
+        with:
+          cache-on-failure: true
+          cache-all-crates: true
       - name: Run coverage tests
-        run: cargo llvm-cov --all-features --doctests --workspace --lcov --output-path lcov.info --locked
+        run: cargo llvm-cov --all-features --doctests --workspace --exclude xtask@0.0.0 --lcov --output-path lcov.info --locked
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:

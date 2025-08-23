@@ -452,7 +452,7 @@ mod test {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "broken"]
     fn panic_in_closure_propagates() {
         // CAUTION: When run in sync mode, this test poisons the global mutex. Later tests will fail!
         // rusty_fork incurs the race condition described above.
