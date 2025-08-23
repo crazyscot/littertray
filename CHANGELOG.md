@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/crazyscot/littertray/compare/v0.2.0...v0.2.1)
+
+### ⚙️ Miscellaneous Tasks
+
+- _(ci)_ Overhaul CI - ([584fa5e](https://github.com/crazyscot/littertray/commit/584fa5eaab71df7b9496b7ea1c5370c28652407b))
+- _(ci,deps)_: bump codecov/codecov-action from 5.4.2 to 5.4.3 - ([2ccb4a9](https://github.com/crazyscot/littertray/commit/2ccb4a9f1c8c44d9fa2e1e3210b02d64b41b2152))
+
 ## [0.2.0](https://github.com/crazyscot/littertray/compare/v0.1.0...v0.2.0)
 
 ### 🐛 Bug Fixes
@@ -22,7 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Enable all features on rust-analyzer, resolve warnings - ([4781ac9](https://github.com/crazyscot/littertray/commit/4781ac90df62c7874f0da7236f162597249a1c3c))
 - Fix badges on README - ([0c98f15](https://github.com/crazyscot/littertray/commit/0c98f1554dfa01233e30d0af1c25b63af5fdd69a))
-
 
 ## [0.1.0]
 
