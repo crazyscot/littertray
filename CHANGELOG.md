@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0](https://github.com/crazyscot/littertray/compare/v0.2.1...v1.0.0)
+
+### 🏗️ Build, packaging & CI
+
+- Set up cargo deny - ([6439996](https://github.com/crazyscot/littertray/commit/643999644d17dda26ea05e72947b115aa2d86a57))
+
+### ⚙️ Miscellaneous Tasks
+
+- Chore(ci)(deps): bump codecov/codecov-action from 5.4.3 to 5.5.0 - ([f4b1f3c](https://github.com/crazyscot/littertray/commit/f4b1f3ce6e2abcce3503ac46dd69f37e322ed72e))
+
+
 ## [0.2.1](https://github.com/crazyscot/littertray/compare/v0.2.0...v0.2.1)
 
 ### ⚙️ Miscellaneous Tasks
