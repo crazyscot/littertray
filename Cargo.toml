@@ -19,10 +19,10 @@ async = ["dep:tokio"]
 
 [dependencies]
 # tokio sync is needed with -F async
-tokio = { optional = true, version = "1.46", features = ["sync"] }
+tokio = { optional = true, version = "1.48", features = ["sync"] }
 anyhow = "1.0"
 cfg-if = "1.0"
-document-features = "0.2.11"
+document-features = "0.2.12"
 tempfile = "3.20"
 thiserror = "2.0"
 
@@ -32,7 +32,7 @@ rustversion = "1.0"
 [dev-dependencies]
 rusty-fork = "0.3"
 # tokio/features are needed with -F async
-tokio = { version = "1.46", features = ["fs", "macros", "rt", "rt-multi-thread"] }
+tokio = { version = "1.48", features = ["fs", "macros", "rt", "rt-multi-thread"] }
 
 [lints.rust]
 dead_code = "warn"
