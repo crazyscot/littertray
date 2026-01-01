@@ -50,7 +50,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Rust ${{ matrix.rust-version }}
-        uses: dtolnay/rust-toolchain@6d653acede28d24f02e3cd41383119e8b1b35921 # 2025-09-17
+        uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561
         with:
           toolchain: ${{ matrix.rust-version }}
           components: rustfmt,clippy,rust-src
@@ -80,7 +80,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@6d653acede28d24f02e3cd41383119e8b1b35921 # 2025-09-17
+      - uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561
         with:
           # update periodically
           toolchain: nightly-2025-07-31
@@ -107,14 +107,13 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@6d653acede28d24f02e3cd41383119e8b1b35921 # 2025-09-17
+        uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561
         with:
           # update periodically
           toolchain: nightly-2025-07-31
           components: llvm-tools-preview,rust-src
       - uses:
-          taiki-e/install-action@33734a118689b0b418824fb78ea2bf18e970b43b # v2.50.4
-          # this action is used in multiple places
+          taiki-e/install-action@e0db384ad69f5ba2c6dd0129d8934e0d0ba465c1 # v2.65.10
         with:
           tool: cargo-llvm-cov
           checksum: true
