@@ -71,6 +71,26 @@ jobs:
       - run: cargo clippy --tests --workspace --locked ${{ matrix.features }}
         if: ${{ !cancelled() }}
 
+  tests:
+    name: tests (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.85
+        uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561
+        with:
+          toolchain: 1.85
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        with:
+          key: 1.85
+          cache-on-failure: true
+        if: ${{ !cancelled() }}
+      - run: cargo test --locked ${{ matrix.features }}
+        if: ${{ !cancelled() }}
+
   docs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -112,8 +132,7 @@ jobs:
           # update periodically
           toolchain: nightly-2025-07-31
           components: llvm-tools-preview,rust-src
-      - uses:
-          taiki-e/install-action@e0db384ad69f5ba2c6dd0129d8934e0d0ba465c1 # v2.65.10
+      - uses: taiki-e/install-action@e0db384ad69f5ba2c6dd0129d8934e0d0ba465c1 # v2.65.10
         with:
           tool: cargo-llvm-cov
           checksum: true

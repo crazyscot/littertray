@@ -394,12 +394,20 @@ mod test {
         .unwrap();
     }
 
+    fn outside_path() -> &'static str {
+        if cfg!(windows) {
+            "C:\\not-a-litter-tray"
+        } else {
+            "/not-a-litter-tray"
+        }
+    }
+
     #[test]
     fn absolute_path_outside_fails_our_error_returned() {
         let inner_error = LitterTray::try_with(|tray| {
             // Creating a file by absolute path outside the sandbox is blocked
             let mut path = PathBuf::new();
-            path.push("/not-a-litter-tray");
+            path.push(outside_path());
             let res = tray.create_text(path, "hi").unwrap_err();
             Ok(res)
         })
@@ -414,7 +422,7 @@ mod test {
         let e = LitterTray::try_with(|tray| {
             // Creating a file by absolute path outside the sandbox is blocked
             let mut path = PathBuf::new();
-            path.push("/not-a-litter-tray");
+            path.push(outside_path());
             let res = tray.create_text(path, "hi")?;
             Ok(res)
         })
