@@ -25,6 +25,7 @@ cfg-if = "1.0"
 document-features = "0.2.12"
 tempfile = "3.24"
 thiserror = "2.0"
+dunce = "1.0.5"
 
 [build-dependencies]
 rustversion = "1.0"

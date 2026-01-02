@@ -169,7 +169,7 @@ impl LitterTray {
         let dir = TempDir::new()?;
         let guard = global_lock_sync();
         let mut tray = LitterTray {
-            canonical_dir: dir.path().canonicalize()?,
+            canonical_dir: dunce::canonicalize(dir.path())?,
             _dir: dir,
             saved_cwd: std::env::current_dir()?,
         };
@@ -219,7 +219,7 @@ impl LitterTray {
         let dir = TempDir::new()?;
         let guard = global_lock_async().await;
         let mut tray = LitterTray {
-            canonical_dir: dir.path().canonicalize()?,
+            canonical_dir: dunce::canonicalize(dir.path())?,
             _dir: dir,
             saved_cwd: std::env::current_dir()?,
         };
@@ -342,7 +342,10 @@ fn dedot<P: AsRef<Path>>(path: P) -> PathBuf {
 #[cfg_attr(coverage_nightly, coverage(off))]
 mod test {
     use super::{dedot, LitterTray};
-    use std::{fs, path::PathBuf};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+    };
 
     #[test]
     fn drop_removes_tempdir() {
@@ -472,6 +475,23 @@ mod test {
         });
         assert!(r.is_err());
     }
+
+    #[test]
+    fn we_do_not_like_unc_pathnames() {
+        LitterTray::run(|tray| {
+            assert!(path_is_not_unc(tray.directory()));
+        });
+    }
+
+    pub(crate) fn path_is_not_unc(path: &Path) -> bool {
+        !path_is_unc(path)
+    }
+
+    pub(crate) fn path_is_unc(path: &Path) -> bool {
+        let s = path.as_os_str().to_string_lossy();
+        let b = s.as_bytes();
+        b[0] == b'\\' && b[1] == b'\\'
+    }
 }
 
 /*
@@ -535,6 +555,14 @@ mod test_async {
             Ok(())
         })
         .await;
+    }
+
+    #[tokio::test]
+    async fn we_do_not_like_unc_pathnames() {
+        let _ = LitterTray::try_with_async(async |tray| {
+            assert!(crate::test::path_is_not_unc(tray.directory()));
+            Ok(())
+        }).await;
     }
 } // mod test_async
 }} // cfg_if!
