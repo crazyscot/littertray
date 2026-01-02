@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0](https://github.com/crazyscot/littertray/compare/v1.0.0...v1.1.0)
+
+### 🐛 Bug Fixes
+
+- Use dunce to avoid UNC path names on Windows where possible - ([bf4a5a6](https://github.com/crazyscot/littertray/commit/bf4a5a6b639e095c4b01cb0c394cf823b652ff72))
+
+### 🏗️ Build, packaging & CI
+
+- Add a Windows test run; make tests pass on Windows - ([b1cd87e](https://github.com/crazyscot/littertray/commit/b1cd87ee869ededddd60329c63a93e7d188fa077))
+
+### ⚙️ Miscellaneous Tasks
+
+- Reduce dependabot notifications frequency - ([121b368](https://github.com/crazyscot/littertray/commit/121b36815206c93e6f56ac4e5e4e4145612afda5))
+
+
 ## [1.0.0](https://github.com/crazyscot/littertray/compare/v0.2.1...v1.0.0)
 
 ### 🏗️ Build, packaging & CI
