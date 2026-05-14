@@ -103,7 +103,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561
         with:
           # update periodically
-          toolchain: nightly-2025-07-31
+          toolchain: nightly-2026-04-30
           components: rust-src
       - uses: dtolnay/install@b2464e56f40a0193c82503a074e7ccf9dd2d7f40 # 2025-09-07
         with:
